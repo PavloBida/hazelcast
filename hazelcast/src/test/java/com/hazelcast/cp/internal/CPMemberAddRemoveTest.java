@@ -20,11 +20,7 @@ import com.hazelcast.cluster.Address;
 import com.hazelcast.cluster.Member;
 import com.hazelcast.config.Config;
 import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.cp.CPGroup;
-import com.hazelcast.cp.CPGroupId;
-import com.hazelcast.cp.CPMember;
-import com.hazelcast.cp.CPSubsystemManagementService;
-import com.hazelcast.cp.IAtomicLong;
+import com.hazelcast.cp.*;
 import com.hazelcast.cp.exception.CPGroupDestroyedException;
 import com.hazelcast.cp.internal.raft.impl.RaftNodeImpl;
 import com.hazelcast.cp.internal.raft.impl.command.UpdateRaftGroupMembersCmd;
@@ -47,11 +43,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 
 import static com.hazelcast.cp.CPGroup.METADATA_CP_GROUP_NAME;
 import static com.hazelcast.cp.internal.raft.QueryPolicy.LINEARIZABLE;
@@ -749,6 +741,8 @@ public class CPMemberAddRemoveTest extends HazelcastRaftTestSupport {
         assertClusterSizeEventually(nodeCount, instances);
         waitUntilCPDiscoveryCompleted(instances);
 
+        RaftService raftService = getRaftService(instances[1]);
+
         // `commitIndexAdvanceCountToSnapshot - 5` is selected on purpose to partially include removal of CP member in snapshot.
         // Specifically, RemoveCPMemberOp will be in snapshot but CompleteRaftGroupMembershipChangesOp will not.
         for (int i = 0; i < commitIndexAdvanceCountToSnapshot - 5; i++) {
@@ -757,7 +751,8 @@ public class CPMemberAddRemoveTest extends HazelcastRaftTestSupport {
 
         // This will add 3 entries, RemoveCPMemberOp, ChangeRaftGroupMembersCmd and CompleteRaftGroupMembershipChangesOp.
         // RemoveCPMemberOp will be in snapshot but CompleteRaftGroupMembershipChangesOp will not be included.
-        instances[0].shutdown();
+        int lastInstanceIndex = instances.length-1;
+        instances[lastInstanceIndex].shutdown();
 
         HazelcastInstance newInstance = factory.newHazelcastInstance(config);
         newInstance.getCPSubsystem().getCPSubsystemManagementService().promoteToCPMember().toCompletableFuture().join();
@@ -767,11 +762,8 @@ public class CPMemberAddRemoveTest extends HazelcastRaftTestSupport {
                 .getCPMembers()
                 .toCompletableFuture().join());
 
-        assertTrueEventually(() -> {
-            RaftService service = getRaftService(newInstance);
-            List<CPMemberInfo> activeMembers = new ArrayList<>(service.getMetadataGroupManager().getActiveMembers());
-            assertEquals(cpMembers, activeMembers);
-        });
+        List<CPMemberInfo> activeMembers = new ArrayList<>(raftService.getMetadataGroupManager().getActiveMembers());
+        assertEquals(cpMembers, activeMembers);
     }
 
     @Test
