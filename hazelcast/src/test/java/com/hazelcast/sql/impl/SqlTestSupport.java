@@ -29,6 +29,7 @@ import com.hazelcast.partition.PartitionService;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 import com.hazelcast.sql.SqlResult;
 import com.hazelcast.sql.SqlRow;
+import com.hazelcast.sql.SqlRowMetadata;
 import com.hazelcast.sql.SqlStatement;
 import com.hazelcast.sql.impl.exec.CreateExecPlanNodeVisitorHook;
 import com.hazelcast.sql.impl.extract.QueryPath;
@@ -46,19 +47,17 @@ import com.hazelcast.sql.impl.worker.QueryFragmentContext;
 import com.hazelcast.test.Accessors;
 import com.hazelcast.test.HazelcastTestSupport;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
+import static org.junit.Assert.fail;
 
 /**
  * Helper test classes.
@@ -346,4 +345,88 @@ public class SqlTestSupport extends HazelcastTestSupport {
 
         return nodeRef.get();
     }
+
+    protected void assertOrdered(SqlRow prevRow, SqlRow
+            row, List<String> orderFields, List<Boolean> orderDirections, SqlRowMetadata rowMetadata) {
+        if (prevRow == null) {
+            return;
+        }
+
+        for (int i = 0; i < orderFields.size(); ++i) {
+            String fieldName = orderFields.get(i);
+            Boolean descending = orderDirections.get(i);
+            Object prevFieldValue = prevRow.getObject(rowMetadata.findColumn(fieldName));
+            Object fieldValue = row.getObject(rowMetadata.findColumn(fieldName));
+
+            int cmp = 0;
+            if (fieldValue == null) {
+                // We use the default ordering for the null values, that is
+                // null value is LESS than any other non-null value
+                cmp = prevFieldValue == null ? 0 : 1;
+            } else if (prevFieldValue == null) {
+                cmp = fieldValue == null ? 0 : -1;
+            } else {
+                if (fieldValue instanceof Integer) {
+                    cmp = ((Integer) prevFieldValue).compareTo((Integer) fieldValue);
+                } else if (fieldValue instanceof Long) {
+                    cmp = ((Long) prevFieldValue).compareTo((Long) fieldValue);
+                } else if (fieldValue instanceof Float) {
+                    cmp = ((Float) prevFieldValue).compareTo((Float) fieldValue);
+                } else if (fieldValue instanceof Double) {
+                    cmp = ((Double) prevFieldValue).compareTo((Double) fieldValue);
+                } else if (fieldValue instanceof String) {
+                    cmp = ((String) prevFieldValue).compareTo((String) fieldValue);
+                } else if (fieldValue instanceof Boolean) {
+                    cmp = ((Boolean) prevFieldValue).compareTo((Boolean) fieldValue);
+                } else if (fieldValue instanceof Byte) {
+                    cmp = ((Byte) prevFieldValue).compareTo((Byte) fieldValue);
+                } else if (fieldValue instanceof Short) {
+                    cmp = ((Short) prevFieldValue).compareTo((Short) fieldValue);
+                } else if (fieldValue instanceof BigDecimal) {
+                    cmp = ((BigDecimal) prevFieldValue).compareTo((BigDecimal) fieldValue);
+                } else if (fieldValue instanceof LocalTime) {
+                    cmp = ((LocalTime) prevFieldValue).compareTo((LocalTime) fieldValue);
+                } else if (fieldValue instanceof LocalDate) {
+                    cmp = ((LocalDate) prevFieldValue).compareTo((LocalDate) fieldValue);
+                } else if (fieldValue instanceof LocalDateTime) {
+                    cmp = ((LocalDateTime) prevFieldValue).compareTo((LocalDateTime) fieldValue);
+                } else if (fieldValue instanceof OffsetDateTime) {
+                    cmp = ((OffsetDateTime) prevFieldValue).compareTo((OffsetDateTime) fieldValue);
+                } else {
+                    fail("Not supported field type " + fieldValue.getClass());
+                }
+            }
+
+            if (cmp == 0) {
+                // Proceed with the next field
+                continue;
+            } else if (cmp < 0) {
+                if (descending != null && descending) {
+                    fail("For field " + fieldName + " the values " + prevFieldValue + ", " + fieldValue + " are not ordered descending");
+                }
+                return;
+            } else if (cmp > 0) {
+                if (descending == null || !descending) {
+                    fail("For field " + fieldName + " the values " + prevFieldValue + ", " + fieldValue + " are not ordered ascending");
+                }
+                return;
+            }
+        }
+    }
+
+    protected static void printSqlResult(SqlRowMetadata sqlRowMetadata, Iterator<SqlRow> rowIterator) {
+        final String padding = "\t | \t";
+        sqlRowMetadata.getColumns().forEach(row -> System.out.print(row.getName() + padding));
+        rowIterator.forEachRemaining(row -> {
+                    System.out.println("\n");
+                    sqlRowMetadata.getColumns().forEach(column ->
+                            System.out.print(row.getObject(column.getName()).toString() + padding));
+                }
+        );
+    }
+
+    protected static void printSqlResult(SqlResult sqlResult) {
+        printSqlResult(sqlResult.getRowMetadata(), sqlResult.iterator());
+    }
+
 }
