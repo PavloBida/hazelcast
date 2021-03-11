@@ -60,12 +60,12 @@ public class SqlIntegrationTest extends SqlTestSupport {
         Assert.assertTrue(count <= 10);
     }
 
-    @Test
-    public void testOrderByDate() {
+    @Test // Verifies issue 18339
+    public void testNotIndexedWhere() {
         addIndexedFields(Arrays.asList("registered"));
 
-        SqlResult sqlResult = member.getSql().execute("SELECT * FROM " + MAP_OBJECT +
-                " WHERE age < 35 AND age > 30 ORDER BY registered ASC FETCH FIRST 1000 ROWS ONLY");
+        SqlResult sqlResult = member.getSql().execute("SELECT registered FROM " + MAP_OBJECT +
+                " WHERE age < 35 AND age > 30 ORDER BY registered FETCH FIRST 1000 ROWS ONLY");
 
         SqlRowMetadata rowMetadata = sqlResult.getRowMetadata();
         Iterator<SqlRow> rowIterator = sqlResult.iterator();
@@ -81,6 +81,22 @@ public class SqlIntegrationTest extends SqlTestSupport {
         }
 
         Assert.assertTrue(count <= 10);
+    }
+
+    @Test
+    public void testWhereWithDoubleQuotes() {
+        final String EXPECTED_EYE_COLOR = "brown";
+        SqlResult sqlResult = member.getSql().execute(
+                String.format("SELECT eyeColor FROM %s WHERE eyeColor=\"%s\"", MAP_OBJECT, EXPECTED_EYE_COLOR));
+
+        SqlRowMetadata rowMetadata = sqlResult.getRowMetadata();
+        Iterator<SqlRow> rowIterator = sqlResult.iterator();
+        printSqlResult(rowMetadata, rowIterator);
+
+        while (rowIterator.hasNext()) {
+            SqlRow currentRow = rowIterator.next();
+            Assert.assertEquals(currentRow.getObject("eyeColor"), EXPECTED_EYE_COLOR);
+        }
     }
 
     static void populateDB() {
